@@ -335,7 +335,10 @@ async def run_http(
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
     path = mcp_app.state.path.lstrip("/")
-    log_server_banner(mcp, "http", host=host, port=port, path=path)
+    # FastMCP's log_server_banner only takes the server instance
+    # Additional info logged separately for clarity
+    log_server_banner(mcp)
+    logger.info(f"HTTP server starting on http://{host}:{port}/{path}")
 
     # Set up metrics on separate port
     from prometheus_fastapi_instrumentator import Instrumentator

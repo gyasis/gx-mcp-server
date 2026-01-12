@@ -1,0 +1,44 @@
+# docker-compose.yml
+# Local development setup for gx-mcp-server with DuckDB support
+# Usage: docker-compose up
+
+services:
+  gx-mcp-server:
+    build:
+      context: /home/gyasisutton/dev/tools/gx-mcp-server
+      dockerfile: Dockerfile
+      args:
+        WITH_DEV: "true"
+    container_name: gx-mcp-local
+    ports:
+      - "8765:8000"  # External:Internal - using unique port 8765
+    environment:
+      - MCP_MODE=http
+      - GX_DUCKDB_ENABLED=true
+      - GX_DUCKDB_SIZE_THRESHOLD_MB=500
+      - GX_DUCKDB_MEMORY_LIMIT=8GB
+      # Shared DuckDB path for duckdb-local exports
+      - GX_DUCKDB_SHARED_PATH=/shared/duckdb/exported.duckdb
+      - GX_DUCKDB_TEMP_DIR=/tmp/duckdb
+    volumes:
+      # Mount local source for live development
+      - /home/gyasisutton/dev/tools/gx-mcp-server:/app
+      # Shadow host .venv - container uses its own venv
+      - gx-venv:/app/.venv
+      # Persist DuckDB temp files
+      - gx-duckdb-temp:/tmp/duckdb
+      # Shared directory for duckdb-local exports (host path)
+      - /home/gyasisutton/.local/share/duckdb:/shared/duckdb
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/mcp/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  gx-venv:
+    driver: local
+  gx-duckdb-temp:
+    driver: local
