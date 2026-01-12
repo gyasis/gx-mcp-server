@@ -12,7 +12,32 @@ if TYPE_CHECKING:
 
 
 def ping() -> dict:
-    """Return basic health status."""
+    """Check if the gx-mcp-server is running and responsive.
+
+    WHEN TO USE:
+    - As a simple health check before starting a validation workflow
+    - To verify the MCP connection is working
+    - For monitoring and alerting systems
+    - To troubleshoot connectivity issues
+
+    WHAT IT CHECKS:
+    - Server is running and accepting requests
+    - Basic server functionality is operational
+
+    Returns:
+        Dictionary containing:
+        - status: "ok" if server is healthy
+
+    Examples:
+        # Verify server is running
+        >>> ping()
+        {"status": "ok"}
+
+        # Use in monitoring
+        >>> result = ping()
+        >>> if result["status"] == "ok":
+        ...     print("Server is healthy")
+    """
     logger.debug("Health check ping")
     return {"status": "ok"}
 

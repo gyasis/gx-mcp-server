@@ -61,22 +61,61 @@ def register(mcp: FastMCP) -> None:
         include_shared_db: bool = True,
         scan_directory: Optional[str] = None,
     ) -> SourceList:
-        """List available data sources for validation.
+        """List all available data sources that can be validated with Great Expectations.
 
-        Shows:
-        - Tables/views from attached shared DuckDB (if configured)
-        - Files in scanned directory (if provided)
+        WHEN TO USE:
+        - As your FIRST step to discover what data is available for validation
+        - Before calling load_dataset() to see available tables/files
+        - After calling attach_shared_db() to verify tables are accessible
+        - To find data files in a directory you want to validate
+
+        WHAT IT RETURNS:
+        - List of DataSource objects with name, type, path, row_count, columns
+        - Whether shared DuckDB is connected
+        - Path to shared DuckDB file (if configured)
+
+        WORKFLOW CONTEXT:
+        This tool integrates with duckdb-local MCP server via export workflow:
+        1. In duckdb-local: Run `EXPORT DATABASE '/path/to/exported.duckdb'`
+        2. In gx-mcp-server: Call `attach_shared_db()` to connect
+        3. Call `list_sources()` to see available tables/views
+        4. Use table names with `load_dataset()` for validation
 
         Args:
-            include_shared_db: Include tables from shared DuckDB export
-            scan_directory: Optional directory to scan for data files
+            include_shared_db: If True, queries the attached shared DuckDB
+                for tables/views. Set to False to skip database sources.
+                Default: True
+            scan_directory: Path to directory to scan for data files
+                (.csv, .parquet, .json, .duckdb). Scans one level deep
+                into subdirectories. Set to None to skip file scanning.
+                Default: None
 
         Returns:
-            SourceList with available sources
+            SourceList containing:
+            - sources: List of DataSource objects with:
+                - name: Source identifier (table name or filename)
+                - type: "table", "view", or "file"
+                - path: File path (for file sources)
+                - database: "shared" (for DB sources)
+                - table: Table/view name
+                - row_count: Number of rows (if known)
+                - columns: List of column names (if known)
+            - shared_db_connected: True if shared DuckDB is accessible
+            - shared_db_path: Path to shared DuckDB file
 
         Examples:
-            - List all sources: list_sources()
-            - Scan a directory: list_sources(scan_directory="/data/exports")
+            # Discover all available sources
+            >>> list_sources()
+            SourceList(sources=[...], shared_db_connected=True, ...)
+
+            # Only list files in a data directory
+            >>> list_sources(include_shared_db=False, scan_directory="/data/exports")
+
+            # Verify shared database is connected and see tables
+            >>> result = list_sources()
+            >>> if result.shared_db_connected:
+            ...     for src in result.sources:
+            ...         print(f"{src.name}: {src.row_count} rows")
         """
         global _shared_db_attached, _shared_db_conn
 
@@ -169,19 +208,60 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     def attach_shared_db(db_path: Optional[str] = None) -> AttachResult:
-        """Attach to a shared DuckDB file exported by duckdb-local.
+        """Connect to a DuckDB database file to access tables/views for validation.
 
-        Use this to access tables/views created in duckdb-local after export.
+        WHEN TO USE:
+        - After duckdb-local MCP server exports a database file
+        - When you want to validate tables created in another DuckDB session
+        - To reconnect to a different database file
+        - As part of the data sharing workflow between MCP servers
+
+        WORKFLOW WITH duckdb-local:
+        1. In duckdb-local: Load data, create views/tables as needed
+        2. In duckdb-local: `EXPORT DATABASE '/home/user/.local/share/duckdb/exported.duckdb'`
+        3. In gx-mcp-server: `attach_shared_db()` or `attach_shared_db("/path/to/exported.duckdb")`
+        4. Call `list_sources()` to see available tables/views
+        5. Load and validate: `load_dataset("table_name", "table")`
+
+        WHAT IT DOES:
+        - Opens read-only connection to the DuckDB file
+        - Closes any existing shared connection first
+        - Queries information_schema for available tables and views
+        - Makes tables accessible via list_sources() and load_dataset()
 
         Args:
-            db_path: Path to DuckDB file. If not provided, uses GX_DUCKDB_SHARED_PATH env var.
+            db_path: Full path to DuckDB database file to attach.
+                - If None: Uses GX_DUCKDB_SHARED_PATH environment variable
+                - If env var not set: Returns error asking for path
+                Common paths:
+                - "/home/user/.local/share/duckdb/exported.duckdb"
+                - "/shared/duckdb/exported.duckdb" (Docker)
 
         Returns:
-            AttachResult with success status and available tables/views
+            AttachResult containing:
+            - success: True if connection established
+            - message: Description of result or error
+            - tables: List of BASE TABLE names found (e.g., ["customers", "orders"])
+            - views: List of VIEW names found (e.g., ["sales_summary", "daily_metrics"])
+
+        Error Cases:
+            - "No shared DB path provided": Set GX_DUCKDB_SHARED_PATH or pass db_path
+            - "Shared DB file not found": File doesn't exist, run EXPORT in duckdb-local first
+            - "Failed to attach": Database file corrupted or incompatible version
 
         Examples:
-            - Use configured path: attach_shared_db()
-            - Explicit path: attach_shared_db("/tmp/exported.duckdb")
+            # Using environment variable (recommended for Docker)
+            >>> attach_shared_db()
+            AttachResult(success=True, message="Successfully attached", tables=["orders"], views=["summary"])
+
+            # Explicit path
+            >>> attach_shared_db("/home/user/data/analytics.duckdb")
+
+            # Check if specific tables are available
+            >>> result = attach_shared_db()
+            >>> if "sales_data" in result.tables:
+            ...     # Proceed with validation
+            ...     pass
         """
         global _shared_db_attached, _shared_db_conn
 
@@ -239,16 +319,58 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     def get_shared_table_schema(table_name: str) -> dict:
-        """Get schema information for a table in the shared DuckDB.
+        """Inspect the schema and sample data of a table in the attached shared DuckDB.
+
+        WHEN TO USE:
+        - Before validation to understand column names and data types
+        - To determine which expectations to add (e.g., value ranges, types)
+        - To preview data before running expensive validations
+        - After list_sources() to get details on a specific table
+
+        REQUIRES:
+        - attach_shared_db() must be called first to connect to database
+        - Table must exist in the attached database
+
+        WHAT IT RETURNS:
+        - Column definitions with names, SQL types, and nullability
+        - Total row count for the table
+        - Sample of first 5 rows to preview data values
 
         Args:
-            table_name: Name of the table to inspect
+            table_name: Exact name of table or view to inspect.
+                Get valid names from list_sources() or attach_shared_db().
+                Case-sensitive in DuckDB.
 
         Returns:
-            Dictionary with column names, types, and sample data
+            Dictionary containing:
+            - table_name: The inspected table name
+            - row_count: Total number of rows
+            - columns: List of column definitions:
+                - name: Column name (e.g., "customer_id")
+                - type: SQL data type (e.g., "VARCHAR", "INTEGER", "TIMESTAMP")
+                - nullable: True if column allows NULL values
+            - sample_data: First 5 rows as list of dicts
+
+        Error Cases:
+            - {"error": "Shared DB not attached..."}: Call attach_shared_db() first
+            - {"error": "Table 'X' not found..."}: Table doesn't exist, check name spelling
 
         Examples:
-            - get_shared_table_schema("sales_data")
+            # Inspect table schema before validation
+            >>> schema = get_shared_table_schema("customer_orders")
+            >>> print(f"Table has {schema['row_count']} rows")
+            >>> for col in schema['columns']:
+            ...     print(f"  {col['name']}: {col['type']}")
+
+            # Check what columns are available for expectations
+            >>> schema = get_shared_table_schema("sales_data")
+            >>> column_names = [c['name'] for c in schema['columns']]
+            >>> # Now you know which columns to validate
+
+            # Preview sample data to understand value patterns
+            >>> schema = get_shared_table_schema("products")
+            >>> for row in schema['sample_data']:
+            ...     print(row)
         """
         global _shared_db_conn
 
@@ -297,20 +419,63 @@ def register(mcp: FastMCP) -> None:
         max_age_hours: int = 24,
         dry_run: bool = True,
     ) -> dict:
-        """Clean up orphan temporary DuckDB files and exports.
+        """Remove old temporary files created by DuckDB and gx-mcp-server to free disk space.
 
-        Removes temporary files older than max_age_hours to free disk space.
+        WHEN TO USE:
+        - Periodically to reclaim disk space from accumulated temp files
+        - When disk space is low and you suspect temp file buildup
+        - After processing many large datasets
+        - As part of routine maintenance
+
+        WHAT IT CLEANS:
+        - *.duckdb files (orphaned DuckDB databases)
+        - *.duckdb.wal files (DuckDB write-ahead logs)
+        - *.tmp files (temporary processing files)
+        - gx_temp_*.csv files (temporary exports)
+
+        DIRECTORIES SCANNED:
+        - Configured temp directory (GX_DUCKDB_TEMP_DIR)
+        - /tmp/duckdb
+        - /tmp/gx_mcp
+
+        SAFETY:
+        - Default is dry_run=True (preview only, no deletion)
+        - Always run with dry_run=True first to see what would be deleted
+        - Only files older than max_age_hours are considered
 
         Args:
-            max_age_hours: Delete files older than this (default: 24 hours)
-            dry_run: If True, only list files without deleting (default: True)
+            max_age_hours: Minimum age in hours for files to be considered for cleanup.
+                Files modified more recently than this are preserved.
+                Default: 24 hours. Recommended minimum: 1 hour.
+            dry_run: Safety flag controlling whether files are actually deleted.
+                - True (default): Only list files, DO NOT delete anything
+                - False: Actually delete matching files
+                IMPORTANT: Always run with True first to preview!
 
         Returns:
-            Dictionary with files found and optionally deleted
+            Dictionary containing:
+            - dry_run: Whether this was a preview (True) or actual cleanup (False)
+            - max_age_hours: The age threshold used
+            - files_found: Count of files matching criteria
+            - files_deleted: Count of files actually deleted (0 if dry_run=True)
+            - bytes_freed_mb: Disk space freed in megabytes (0 if dry_run=True)
+            - files: List of file details (paths if dry_run, deleted paths if not)
+            - message: Human-readable summary
 
         Examples:
-            - Preview cleanup: cleanup_temp_files(dry_run=True)
-            - Actually clean: cleanup_temp_files(max_age_hours=12, dry_run=False)
+            # STEP 1: Always preview first (safe)
+            >>> cleanup_temp_files(dry_run=True)
+            {"dry_run": True, "files_found": 15, "message": "Found 15 files older than 24h"}
+
+            # STEP 2: If preview looks good, actually clean
+            >>> cleanup_temp_files(dry_run=False)
+            {"dry_run": False, "files_deleted": 15, "bytes_freed_mb": 2.5, ...}
+
+            # Clean files older than 12 hours
+            >>> cleanup_temp_files(max_age_hours=12, dry_run=False)
+
+            # Check for very old files (>7 days)
+            >>> cleanup_temp_files(max_age_hours=168, dry_run=True)
         """
         import time
 
