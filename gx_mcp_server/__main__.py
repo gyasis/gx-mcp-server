@@ -304,7 +304,9 @@ async def run_http(
         )
 
     # Build FastAPI app with health route mounted before MCP routes
-    mcp_app = mcp.http_app()
+    # stateless_http=True: No session management required (fixes Claude Code connection)
+    # json_response=True: Allow clients that only send Accept: application/json
+    mcp_app = mcp.http_app(stateless_http=True, json_response=True)
 
     if trace_enabled:
         setup_tracing(mcp_app)

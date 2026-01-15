@@ -23,9 +23,8 @@ def create_server(auth: OAuthProvider | None = None) -> FastMCP:
     logger.debug("Creating GX MCP server instance")
 
     # Create the MCP server
-    # stateless_http=True allows HTTP requests without session management
-    # This fixes "Missing session ID" errors with Claude Code/Desktop clients
-    mcp: FastMCP = FastMCP("gx-mcp-server", auth=auth, stateless_http=True)
+    # Note: stateless_http is now set in http_app() call per FastMCP 2.14+ deprecation
+    mcp: FastMCP = FastMCP("gx-mcp-server", auth=auth)
 
     # Register all tools
     from gx_mcp_server.tools import register_tools

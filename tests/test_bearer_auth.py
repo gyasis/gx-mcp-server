@@ -6,7 +6,7 @@ from authlib.jose import jwt
 
 from gx_mcp_server.bearer_auth import BearerAuthProvider
 from gx_mcp_server.server import create_server
-from fastmcp.server.auth.providers.bearer import RSAKeyPair
+from fastmcp.server.auth.providers.jwt import RSAKeyPair
 
 
 @pytest.fixture
@@ -39,7 +39,11 @@ async def test_invalid_issuer(keypair):
     app = make_app(provider)
     with TestClient(app) as client:
         header = {"alg": "RS256"}
-        payload = {"iss": "wrong-issuer", "aud": "gx-mcp", "exp": int(time.time()) + 3600}
+        payload = {
+            "iss": "wrong-issuer",
+            "aud": "gx-mcp",
+            "exp": int(time.time()) + 3600,
+        }
         private_key_bytes = keypair.private_key.get_secret_value().encode("utf-8")
         token = jwt.encode(header, payload, private_key_bytes)
         resp = client.get("/mcp/", headers={"Authorization": f"Bearer {token}"})
@@ -67,4 +71,3 @@ async def test_expired_token(keypair):
         token = jwt.encode(header, payload, private_key_bytes)
         resp = client.get("/mcp/", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 401
-

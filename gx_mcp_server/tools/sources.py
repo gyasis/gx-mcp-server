@@ -8,6 +8,7 @@ Provides tools to:
 """
 
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -49,6 +50,8 @@ class AttachResult(BaseModel):
 
 
 # Module-level state for shared DB connection
+# Thread lock protects concurrent access to these globals
+_shared_db_lock = threading.Lock()
 _shared_db_attached: bool = False
 _shared_db_conn = None
 
@@ -129,9 +132,10 @@ def register(mcp: FastMCP) -> None:
                 try:
                     import duckdb
 
-                    if _shared_db_conn is None:
-                        _shared_db_conn = duckdb.connect(config.shared_db_path, read_only=True)
-                        _shared_db_attached = True
+                    with _shared_db_lock:
+                        if _shared_db_conn is None:
+                            _shared_db_conn = duckdb.connect(config.shared_db_path, read_only=True)
+                            _shared_db_attached = True
 
                     # Get tables
                     tables = _shared_db_conn.execute(
@@ -283,14 +287,15 @@ def register(mcp: FastMCP) -> None:
         try:
             import duckdb
 
-            # Close existing connection if any
-            if _shared_db_conn is not None:
-                _shared_db_conn.close()
+            with _shared_db_lock:
+                # Close existing connection if any
+                if _shared_db_conn is not None:
+                    _shared_db_conn.close()
 
-            _shared_db_conn = duckdb.connect(path, read_only=True)
-            _shared_db_attached = True
+                _shared_db_conn = duckdb.connect(path, read_only=True)
+                _shared_db_attached = True
 
-            # Get tables and views
+            # Get tables and views (outside lock - reads are safe)
             tables = _shared_db_conn.execute(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' AND table_type = 'BASE TABLE'"
             ).fetchall()
