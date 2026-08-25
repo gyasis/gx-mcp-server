@@ -183,9 +183,7 @@ class BearerAuthProvider(OAuthProvider):
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         raise NotImplementedError("Client registration not supported")
 
-    async def authorize(
-        self, client: OAuthClientInformationFull, params: Any
-    ) -> str:
+    async def authorize(self, client: OAuthClientInformationFull, params: Any) -> str:
         raise NotImplementedError("Authorization flow not supported")
 
     async def exchange_authorization_code(
@@ -197,7 +195,10 @@ class BearerAuthProvider(OAuthProvider):
         raise NotImplementedError("Token revocation not supported")
 
     async def exchange_refresh_token(
-        self, client: OAuthClientInformationFull, refresh_token: RefreshToken, scopes: list[str]
+        self,
+        client: OAuthClientInformationFull,
+        refresh_token: RefreshToken,
+        scopes: list[str],
     ) -> OAuthToken:
         raise NotImplementedError("Refresh token exchange not supported")
 

@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gx-mcp-server/schemas/dataset_handle.json",
+  "title": "DatasetHandle",
+  "description": "Handle representing a loaded dataset with execution engine metadata",
+  "type": "object",
+  "required": ["id", "name", "source", "row_count", "columns", "engine"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the dataset handle"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name for the dataset"
+    },
+    "source": {
+      "type": "string",
+      "description": "Original source path, URL, or URI"
+    },
+    "row_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of rows in the dataset"
+    },
+    "columns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "List of column names in the dataset"
+    },
+    "engine": {
+      "type": "string",
+      "enum": ["pandas", "duckdb"],
+      "description": "Execution engine used for this dataset"
+    },
+    "engine_metadata": {
+      "type": ["object", "null"],
+      "description": "Engine-specific metadata. Only populated for duckdb engine.",
+      "properties": {
+        "duckdb_table": {
+          "type": ["string", "null"],
+          "description": "Table or view name in DuckDB"
+        },
+        "duckdb_path": {
+          "type": ["string", "null"],
+          "description": "Database file path. Null for in-memory databases."
+        },
+        "connection_id": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "description": "Reference to DuckDBConnectionManager"
+        },
+        "memory_limit": {
+          "type": ["string", "null"],
+          "pattern": "^\\d+[KMGT]?B$",
+          "description": "Applied memory limit for this connection"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "engine": { "const": "pandas" } }
+      },
+      "then": {
+        "properties": {
+          "engine_metadata": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "engine": { "const": "duckdb" } }
+      },
+      "then": {
+        "properties": {
+          "engine_metadata": {
+            "type": "object",
+            "required": ["connection_id"]
+          }
+        },
+        "required": ["engine_metadata"]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "sales_data",
+      "source": "/data/sales.csv",
+      "row_count": 1000000,
+      "columns": ["date", "product_id", "quantity", "revenue"],
+      "engine": "pandas",
+      "engine_metadata": null
+    },
+    {
+      "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      "name": "large_transactions",
+      "source": "duckdb:///data/transactions.csv",
+      "row_count": 50000000,
+      "columns": ["txn_id", "timestamp", "amount", "status"],
+      "engine": "duckdb",
+      "engine_metadata": {
+        "duckdb_table": "transactions",
+        "duckdb_path": null,
+        "connection_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "memory_limit": "4GB"
+      }
+    }
+  ]
+}

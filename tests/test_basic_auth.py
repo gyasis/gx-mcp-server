@@ -35,7 +35,9 @@ def test_basic_auth_required():
         assert resp_ok.status_code != 401
 
 
-@patch.dict(os.environ, {"MCP_SERVER_USER": "env_user", "MCP_SERVER_PASSWORD": "env_pass"})
+@patch.dict(
+    os.environ, {"MCP_SERVER_USER": "env_user", "MCP_SERVER_PASSWORD": "env_pass"}
+)
 def test_basic_auth_from_env():
     from gx_mcp_server.__main__ import main
 

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gx-mcp-server/schemas/duckdb_uri_config.json",
+  "title": "DuckDBURIConfig",
+  "description": "Configuration parsed from a duckdb:// URI",
+  "type": "object",
+  "required": ["uri_type"],
+  "properties": {
+    "uri_type": {
+      "type": "string",
+      "enum": ["csv", "database", "memory"],
+      "description": "Type of DuckDB connection determined from URI"
+    },
+    "path": {
+      "type": ["string", "null"],
+      "description": "File system path to CSV or database file. Null for in-memory databases."
+    },
+    "table": {
+      "type": ["string", "null"],
+      "description": "Table name to query from database file",
+      "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+    },
+    "view": {
+      "type": ["string", "null"],
+      "description": "View name to query from database file",
+      "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+    },
+    "csv_source": {
+      "type": ["string", "null"],
+      "description": "CSV file path for memory databases. Only valid when uri_type is 'memory'."
+    },
+    "read_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "Open database in read-only mode"
+    },
+    "memory_limit": {
+      "type": ["string", "null"],
+      "pattern": "^\\d+[KMGT]?B$",
+      "description": "DuckDB memory limit (e.g., '4GB', '512MB')"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "uri_type": { "const": "csv" } }
+      },
+      "then": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "\\.csv$"
+          }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "uri_type": { "const": "memory" } }
+      },
+      "then": {
+        "properties": {
+          "path": { "type": "null" }
+        }
+      }
+    },
+    {
+      "not": {
+        "required": ["table", "view"],
+        "properties": {
+          "table": { "type": "string" },
+          "view": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "uri_type": "csv",
+      "path": "/data/sales.csv",
+      "read_only": false
+    },
+    {
+      "uri_type": "memory",
+      "path": null,
+      "csv_source": "/tmp/data.csv",
+      "memory_limit": "2GB"
+    },
+    {
+      "uri_type": "database",
+      "path": "/warehouse.db",
+      "table": "customers",
+      "read_only": true
+    }
+  ]
+}

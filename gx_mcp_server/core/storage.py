@@ -6,9 +6,11 @@ from __future__ import annotations
 import threading
 import uuid
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
+
+from gx_mcp_server.core.schema import EngineMetadata, ExecutionEngine
 
 _MAX_ITEMS = 100
 
@@ -17,8 +19,10 @@ _MAX_ITEMS = 100
 # ---------------------------------------------------------------------------
 _df_store: OrderedDict[str, pd.DataFrame] = OrderedDict()
 _result_store: OrderedDict[str, Any] = OrderedDict()
+_duckdb_metadata_store: OrderedDict[str, EngineMetadata] = OrderedDict()
 _df_lock = threading.Lock()
 _result_lock = threading.Lock()
+_duckdb_lock = threading.Lock()
 
 
 class _InMemoryDataStorage:
@@ -42,6 +46,61 @@ class _InMemoryDataStorage:
         with _df_lock:
             _df_store[handle].to_csv(path, index=False)
         return path
+
+    @staticmethod
+    def add_duckdb_handle(handle_id: str, engine_metadata: EngineMetadata) -> None:
+        """Store DuckDB engine metadata for a handle.
+
+        Args:
+            handle_id: The dataset handle ID (from DatasetHandleExtended.id)
+            engine_metadata: DuckDB-specific metadata containing connection info
+        """
+        with _duckdb_lock:
+            if len(_duckdb_metadata_store) >= _MAX_ITEMS:
+                _duckdb_metadata_store.popitem(last=False)
+            _duckdb_metadata_store[handle_id] = engine_metadata
+
+    @staticmethod
+    def get_duckdb_metadata(handle_id: str) -> Optional[EngineMetadata]:
+        """Retrieve DuckDB engine metadata for a handle.
+
+        Args:
+            handle_id: The dataset handle ID
+
+        Returns:
+            EngineMetadata if handle is DuckDB-backed, None otherwise
+        """
+        with _duckdb_lock:
+            return _duckdb_metadata_store.get(handle_id)
+
+    @staticmethod
+    def is_duckdb_handle(handle_id: str) -> bool:
+        """Check if a handle is backed by DuckDB.
+
+        Args:
+            handle_id: The dataset handle ID
+
+        Returns:
+            True if handle has DuckDB metadata, False otherwise
+        """
+        with _duckdb_lock:
+            return handle_id in _duckdb_metadata_store
+
+    @staticmethod
+    def get_engine_type(handle_id: str) -> ExecutionEngine:
+        """Determine the execution engine type for a handle.
+
+        Args:
+            handle_id: The dataset handle ID
+
+        Returns:
+            ExecutionEngine.DUCKDB if handle has DuckDB metadata,
+            ExecutionEngine.PANDAS otherwise
+        """
+        with _duckdb_lock:
+            if handle_id in _duckdb_metadata_store:
+                return ExecutionEngine.DUCKDB
+        return ExecutionEngine.PANDAS
 
 
 class _InMemoryValidationStorage:
@@ -113,6 +172,53 @@ class DataStorage:
     @staticmethod
     def get_handle_path(handle: str) -> str:
         return _data_backend.get_handle_path(handle)
+
+    @staticmethod
+    def add_duckdb_handle(handle_id: str, engine_metadata: EngineMetadata) -> None:
+        """Store DuckDB engine metadata for a handle.
+
+        Args:
+            handle_id: The dataset handle ID (from DatasetHandleExtended.id)
+            engine_metadata: DuckDB-specific metadata containing connection info
+        """
+        _data_backend.add_duckdb_handle(handle_id, engine_metadata)
+
+    @staticmethod
+    def get_duckdb_metadata(handle_id: str) -> Optional[EngineMetadata]:
+        """Retrieve DuckDB engine metadata for a handle.
+
+        Args:
+            handle_id: The dataset handle ID
+
+        Returns:
+            EngineMetadata if handle is DuckDB-backed, None otherwise
+        """
+        return _data_backend.get_duckdb_metadata(handle_id)
+
+    @staticmethod
+    def is_duckdb_handle(handle_id: str) -> bool:
+        """Check if a handle is backed by DuckDB.
+
+        Args:
+            handle_id: The dataset handle ID
+
+        Returns:
+            True if handle has DuckDB metadata, False otherwise
+        """
+        return _data_backend.is_duckdb_handle(handle_id)
+
+    @staticmethod
+    def get_engine_type(handle_id: str) -> ExecutionEngine:
+        """Determine the execution engine type for a handle.
+
+        Args:
+            handle_id: The dataset handle ID
+
+        Returns:
+            ExecutionEngine.DUCKDB if handle has DuckDB metadata,
+            ExecutionEngine.PANDAS otherwise
+        """
+        return _data_backend.get_engine_type(handle_id)
 
 
 class ValidationStorage:

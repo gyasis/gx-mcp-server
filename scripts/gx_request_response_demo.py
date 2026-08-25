@@ -21,9 +21,10 @@ PROC = None
 
 
 def stream_reader(stream, label):
-    for line in iter(stream.readline, b''):
+    for line in iter(stream.readline, b""):
         print(f"[{label}] {line.decode().strip()}")
     stream.close()
+
 
 # ── helpers ─────────────────────────────────────────────────────────────
 def start_server():
@@ -74,7 +75,9 @@ async def main():
             # 1 · load_dataset
             with open(CSV_PATH, "r") as f:
                 csv_content = f.read()
-            res = await client.call_tool("load_dataset", {"source_type": "inline", "source": csv_content})
+            res = await client.call_tool(
+                "load_dataset", {"source_type": "inline", "source": csv_content}
+            )
             handle = res.structured_content["result"]["handle"]
 
             # 2 · create basic suite
@@ -99,11 +102,15 @@ async def main():
 
             # 4 · run checkpoint
             chk = await client.call_tool(
-                "run_checkpoint", {"dataset_handle": handle, "suite_name": "customer_suite"}
+                "run_checkpoint",
+                {"dataset_handle": handle, "suite_name": "customer_suite"},
             )
 
             # 5 · fetch results
-            result = await client.call_tool("get_validation_result", {"validation_id": chk.structured_content["validation_id"]})
+            result = await client.call_tool(
+                "get_validation_result",
+                {"validation_id": chk.structured_content["validation_id"]},
+            )
             print(json.dumps(result.structured_content, indent=2))
 
     finally:

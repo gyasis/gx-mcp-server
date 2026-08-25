@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gx-mcp-server/schemas/routing_decision.json",
+  "title": "RoutingDecision",
+  "description": "Decision outcome for pandas vs DuckDB execution engine routing",
+  "type": "object",
+  "required": ["engine", "reason"],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "enum": ["pandas", "duckdb"],
+      "description": "Selected execution engine"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable explanation for the routing decision"
+    },
+    "file_size_bytes": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "File size in bytes if source is a file"
+    },
+    "uri_config": {
+      "oneOf": [
+        { "$ref": "duckdb_uri_config.json" },
+        { "type": "null" }
+      ],
+      "description": "Parsed DuckDB URI configuration if duckdb:// scheme was used"
+    },
+    "fallback_from": {
+      "type": ["string", "null"],
+      "enum": ["duckdb", null],
+      "description": "Original engine if fallback occurred. Only 'duckdb' is valid since pandas never falls back."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fallback_from": { "type": "string" }
+        },
+        "required": ["fallback_from"]
+      },
+      "then": {
+        "properties": {
+          "engine": { "const": "pandas" }
+        }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "engine": "pandas",
+      "reason": "File size (52428800 bytes) below threshold (524288000 bytes)",
+      "file_size_bytes": 52428800,
+      "uri_config": null,
+      "fallback_from": null
+    },
+    {
+      "engine": "duckdb",
+      "reason": "File size (2147483648 bytes) exceeds threshold (524288000 bytes)",
+      "file_size_bytes": 2147483648,
+      "uri_config": null,
+      "fallback_from": null
+    },
+    {
+      "engine": "duckdb",
+      "reason": "Explicit duckdb:// URI scheme",
+      "file_size_bytes": 10485760,
+      "uri_config": {
+        "uri_type": "csv",
+        "path": "/data/small_file.csv",
+        "read_only": false
+      },
+      "fallback_from": null
+    },
+    {
+      "engine": "pandas",
+      "reason": "DuckDB unavailable, falling back to pandas for file under 1GB limit",
+      "file_size_bytes": 524288000,
+      "uri_config": null,
+      "fallback_from": "duckdb"
+    }
+  ]
+}

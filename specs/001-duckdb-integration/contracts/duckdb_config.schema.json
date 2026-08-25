@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gx-mcp-server/schemas/duckdb_config.json",
+  "title": "DuckDBConfig",
+  "description": "Configuration for DuckDB integration loaded from environment variables",
+  "type": "object",
+  "required": ["enabled", "size_threshold_mb"],
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether DuckDB integration is enabled. Controlled by GX_DUCKDB_ENABLED environment variable."
+    },
+    "size_threshold_mb": {
+      "type": "integer",
+      "default": 500,
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "File size threshold in MB above which DuckDB is automatically used. Controlled by GX_DUCKDB_SIZE_THRESHOLD_MB environment variable."
+    },
+    "memory_limit": {
+      "type": ["string", "null"],
+      "pattern": "^\\d+[KMGT]?B$",
+      "default": null,
+      "description": "DuckDB memory limit (e.g., '4GB', '512MB'). Controlled by GX_DUCKDB_MEMORY_LIMIT environment variable. Null means use DuckDB default."
+    },
+    "temp_directory": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Directory for DuckDB temporary/spill files. Controlled by GX_DUCKDB_TEMP_DIR environment variable. Null means use system temp directory."
+    }
+  },
+  "examples": [
+    {
+      "enabled": true,
+      "size_threshold_mb": 500,
+      "memory_limit": null,
+      "temp_directory": null
+    },
+    {
+      "enabled": true,
+      "size_threshold_mb": 100,
+      "memory_limit": "4GB",
+      "temp_directory": "/data/duckdb_temp"
+    },
+    {
+      "enabled": false,
+      "size_threshold_mb": 500,
+      "memory_limit": null,
+      "temp_directory": null
+    }
+  ]
+}
